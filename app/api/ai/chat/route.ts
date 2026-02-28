@@ -69,15 +69,15 @@ RESPONSE FORMAT: Problem → Root Cause → Step-by-step Fix. Chhoti problem bhi
 async function loadSettings(): Promise<{ apiKey: string; model: string; customInstructions: string }> {
   try {
     const snap = await db.doc('system/ai_settings').get();
-    if (!snap.exists) return { apiKey: '', model: 'gemini-2.0-flash', customInstructions: '' };
+    if (!snap.exists) return { apiKey: '', model: 'gemini-2.5-flash', customInstructions: '' };
     const data = snap.data()!;
     return {
       apiKey: data.apiKey || '',
-      model: data.model || 'gemini-2.0-flash',
+      model: data.model || 'gemini-2.5-flash',
       customInstructions: data.customInstructions || '',
     };
   } catch {
-    return { apiKey: '', model: 'gemini-2.0-flash', customInstructions: '' };
+    return { apiKey: '', model: 'gemini-2.5-flash', customInstructions: '' };
   }
 }
 
@@ -100,7 +100,13 @@ export async function POST(req: NextRequest) {
 
   const settings = await loadSettings();
   const apiKey = overrideApiKey || settings.apiKey;
-  const model = overrideModel || settings.model;
+  let model = overrideModel || settings.model;
+
+  // Auto-fallback retired models
+  const VALID_MODELS = ['gemini-3.1-pro-preview','gemini-3-flash-preview','gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.5-pro','gemini-2.0-flash'];
+  if (!VALID_MODELS.includes(model)) {
+    model = 'gemini-2.5-flash';
+  }
 
   if (!apiKey) {
     return NextResponse.json(
