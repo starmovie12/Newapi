@@ -18,44 +18,44 @@ const SETTINGS_DOC = 'system/ai_settings';
 // Ye list frontend ko bhi jaayegi for model selector
 export const AVAILABLE_MODELS = [
   {
-    id: 'gemini-2.5-flash-preview-05-20',
-    name: 'Gemini 2.5 Flash (Preview)',
-    description: 'Latest & fastest — thinking model with great performance',
+    id: 'gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro (Preview)',
+    description: 'Newest & most powerful — advanced reasoning & coding (Feb 2026)',
+    tier: 'powerful',
+    contextWindow: '1M tokens',
+  },
+  {
+    id: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash (Preview)',
+    description: 'Frontier-class performance — fast & smart',
     tier: 'recommended',
     contextWindow: '1M tokens',
   },
   {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    description: 'Fast, powerful — best balance of speed & quality',
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    description: 'Stable & reliable — best balance of speed & quality',
     tier: 'recommended',
     contextWindow: '1M tokens',
   },
   {
-    id: 'gemini-2.0-flash-lite',
-    name: 'Gemini 2.0 Flash Lite',
+    id: 'gemini-2.5-flash-lite',
+    name: 'Gemini 2.5 Flash Lite',
     description: 'Ultra-fast, lightweight — for quick questions',
     tier: 'fast',
     contextWindow: '1M tokens',
   },
   {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro',
-    description: 'Most capable — deep analysis & complex reasoning',
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    description: 'Deep reasoning — complex analysis & coding tasks',
     tier: 'powerful',
-    contextWindow: '2M tokens',
-  },
-  {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash',
-    description: 'Reliable & fast — good all-rounder',
-    tier: 'fast',
     contextWindow: '1M tokens',
   },
   {
-    id: 'gemini-1.5-flash-8b',
-    name: 'Gemini 1.5 Flash 8B',
-    description: 'Smallest & cheapest — simple tasks only',
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    description: 'Legacy stable — still works (retiring June 2026)',
     tier: 'economy',
     contextWindow: '1M tokens',
   },
@@ -63,7 +63,7 @@ export const AVAILABLE_MODELS = [
 
 const DEFAULT_SETTINGS = {
   apiKey: '',
-  model: 'gemini-2.0-flash',
+  model: 'gemini-2.5-flash',
   customInstructions: '',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -84,6 +84,17 @@ export async function GET() {
 
     const data = snap.data()!;
 
+    // Auto-migrate retired models to default
+    const validModelIds = AVAILABLE_MODELS.map(m => m.id);
+    let currentModel = data.model || 'gemini-2.5-flash';
+    let needsMigration = false;
+    if (!validModelIds.includes(currentModel)) {
+      currentModel = 'gemini-2.5-flash'; // Migrate to stable default
+      needsMigration = true;
+      // Save migration
+      try { await db.doc(SETTINGS_DOC).update({ model: currentModel, updatedAt: new Date().toISOString() }); } catch {}
+    }
+
     // Mask API key for security — show only last 8 chars
     const maskedKey = data.apiKey
       ? '••••••••' + data.apiKey.slice(-8)
@@ -92,6 +103,7 @@ export async function GET() {
     return NextResponse.json({
       settings: {
         ...data,
+        model: currentModel,
         apiKey: maskedKey,
         hasApiKey: !!data.apiKey,
       },
