@@ -378,5 +378,4 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// FIX A — Named exports for cron to import directly (ZERO nested HTTP)
-export { processLink, saveResultToFirestore };
+// processLink and saveResultToFirestore are already exported above
