@@ -263,29 +263,60 @@ export async function GET(req: NextRequest) {
       timerPromise,
     ]);
 
-    // TRAP 7 FIX: Count successes from BOTH arrays correctly — timer results were previously IGNORED
-    const directDone = directSettled.filter(r => r.status === 'fulfilled' && (r.value as any)?.status === 'done').length;
-    const timerDone  = (timerResults as any[]).filter(r => r?.status === 'done' || r?.status === 'success').length;
-    const doneCount  = directDone + timerDone;
+    // Count successes from BOTH arrays correctly
+    const directDone   = directSettled.filter(r => r.status === 'fulfilled' && (r.value as any)?.status === 'done').length;
+    const directErrors = directSettled.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && (r.value as any)?.status === 'error')).length;
+    const timerDone    = (timerResults as any[]).filter(r => r?.status === 'done' || r?.status === 'success').length;
+    const timerErrors  = (timerResults as any[]).filter(r => r?.status === 'error' || r?.status === 'failed').length;
+    const doneCount    = directDone + timerDone;
+    const errorCount   = directErrors + timerErrors;
 
-    // Step 8: Queue item status update (FIX A + v5 TRAP 6 FIX)
-    // v5 TRAP 6 FIX: hasDeferredLinks → queue 'pending' + unlock for next cron run
+    // ✅ FIX 1: Queue item completion — STRICT 100% success required
+    //
+    // OLD BUG: status = doneCount > 0 ? 'completed' : 'failed'
+    //   → 1 success out of 5 links = 'completed' → movie skipped forever
+    //
+    // NEW LOGIC:
+    //   allLinksSucceeded = doneCount === total AND errorCount === 0
+    //   → Only 'completed' when EVERY link resolved successfully
+    //   → Any error/failure → 'failed' so cron retry logic picks it up
+    //   → hasDeferredLinks → 'pending' so next cron run resumes remaining links
+    const totalProcessed = pendingLinks.length - (hasDeferredLinks ? timerLinks.filter((_: any, i: number) => {
+      // approximate deferred count — actual count handled by hasDeferredLinks flag
+      return false;
+    }).length : 0);
+    const allLinksSucceeded = !hasDeferredLinks && errorCount === 0 && doneCount === pendingLinks.length;
+
+    // Step 8: Queue item status update
     if (hasDeferredLinks) {
       await db.collection(queueCollection).doc(item.id).update({
-        status:           'pending',   // Re-queue — next cron will resume
+        status:           'pending',   // Re-queue — next cron will resume deferred links
         lockedAt:         null,        // Unlock
         taskId,
         extractedBy:      'Server/Auto-Pilot',
         retryCount:       item.retryCount || 0,
         lastPartialRunAt: new Date().toISOString(),
       });
-    } else {
+    } else if (allLinksSucceeded) {
+      // ✅ 100% success — mark completed
       await db.collection(queueCollection).doc(item.id).update({
-        status:      doneCount > 0 ? 'completed' : 'failed',
+        status:      'completed',
         processedAt: new Date().toISOString(),
         taskId,
         extractedBy: 'Server/Auto-Pilot',
         retryCount:  item.retryCount || 0,
+      });
+    } else {
+      // ❌ Some links failed — mark 'failed' so cron retry logic can pick it up
+      // The scraping_task in Firestore will also be 'failed' (set by saveResultToFirestore)
+      // recoverStuckTasks() will reset it to 'pending' on the next cron run
+      await db.collection(queueCollection).doc(item.id).update({
+        status:      'failed',
+        processedAt: new Date().toISOString(),
+        taskId,
+        extractedBy: 'Server/Auto-Pilot',
+        retryCount:  item.retryCount || 0,
+        lastError:   `${errorCount} link(s) failed out of ${pendingLinks.length}`,
       });
     }
 
