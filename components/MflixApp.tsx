@@ -206,6 +206,17 @@ export default function MflixApp() {
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
 
   // ─── Auto-Pilot States ──────────────────────────────────────────────────
+
+  // isAutoPilotEnabled: Persisted ON/OFF toggle — survives page refresh.
+  const [isAutoPilotEnabled, setIsAutoPilotEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('mflix_autopilot_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const [autoPilotPhase, setAutoPilotPhase] = useState<AutoPilotPhase>('idle');
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
   const [currentQueueItem, setCurrentQueueItem] = useState<QueueItem | null>(null);
@@ -269,6 +280,23 @@ export default function MflixApp() {
    * enginePollRef: 20-second engine status polling interval reference.
    */
   const enginePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Sync isAutoPilotEnabled → localStorage
+  useEffect(() => {
+    try { localStorage.setItem('mflix_autopilot_enabled', String(isAutoPilotEnabled)); } catch {}
+  }, [isAutoPilotEnabled]);
+
+  // On mount: if autopilot was ON, auto-restart
+  useEffect(() => {
+    if (isAutoPilotEnabled && autoPilotPhase === 'idle') {
+      const timer = setTimeout(() => {
+        autoPilotActiveRef.current = true;
+        runAutoPilot();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // COMPUTED VALUES
@@ -1015,6 +1043,7 @@ export default function MflixApp() {
    * autoPilotActiveRef set karo aur runAutoPilot() call karo.
    */
   const handleStartAutoPilot = () => {
+    setIsAutoPilotEnabled(true);
     autoPilotActiveRef.current = true;
     runAutoPilot();
   };
@@ -1024,6 +1053,7 @@ export default function MflixApp() {
    * autoPilotActiveRef false karo — current item complete hone ke baad stop.
    */
   const handleStopAutoPilot = () => {
+    setIsAutoPilotEnabled(false);
     autoPilotActiveRef.current = false;
     addAutoPilotLog('⛔ Stop requested — finishing current item...', 'warn');
     setAutoPilotStatusMsg('Stopping after current item completes...');
@@ -1034,6 +1064,7 @@ export default function MflixApp() {
    * Saari Auto-Pilot state reset karo — fresh start ke liye.
    */
   const handleResetAutoPilot = () => {
+    setIsAutoPilotEnabled(false);
     autoPilotActiveRef.current = false;
     setAutoPilotPhase('idle');
     setQueueStats(null);
