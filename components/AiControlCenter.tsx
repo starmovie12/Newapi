@@ -112,7 +112,7 @@ export default function AiControlCenter({ onBack }: { onBack: () => void }) {
   const [chatErr, setChatErr] = useState<string | null>(null);
   const [totalTokens, setTotalTokens] = useState(0);
 
-  const [settings, setSettings] = useState<AiSettings>({ model: 'gemini-2.0-flash', customInstructions: '' });
+  const [settings, setSettings] = useState<AiSettings>({ model: 'gemini-2.5-flash', customInstructions: '' });
   const [models, setModels] = useState<GeminiModel[]>([]);
   const [isConfigured, setIsConfigured] = useState(false);
   const [newApiKey, setNewApiKey] = useState('');
@@ -146,7 +146,7 @@ export default function AiControlCenter({ onBack }: { onBack: () => void }) {
       const r = await fetch('/api/ai/settings');
       if (!r.ok) return;
       const data = await r.json();
-      setSettings(data.settings || { model: 'gemini-2.0-flash', customInstructions: '' });
+      setSettings(data.settings || { model: 'gemini-2.5-flash', customInstructions: '' });
       setModels(data.models || []);
       setIsConfigured(data.isConfigured || false);
       setCustomInst(data.settings?.customInstructions || '');
